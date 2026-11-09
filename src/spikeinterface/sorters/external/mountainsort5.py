@@ -44,6 +44,7 @@ class Mountainsort5Sorter(BaseSorter):
         "filter": True,
         "whiten": True,  # Important to do whitening
         "whitening_seed": None,  # seed for whitening's random chunk selection (None = nondeterministic)
+        "random_seed": None,  # seed for MS5 PCA / classifier PCA (None = MS5 default; requires mountainsort5>=0.5.10)
         "delete_temporary_recording": True,
     }
 
@@ -69,6 +70,7 @@ class Mountainsort5Sorter(BaseSorter):
         "filter": "Enable or disable filter",
         "whiten": "Enable or disable whitening",
         "whitening_seed": "Seed for the random data chunks used to estimate the whitening matrix. Set an int for reproducible (deterministic) whitening; None (default) uses fresh randomness each run.",
+        "random_seed": "Seed for MountainSort5 PCA / classifier PCA RNG (Scheme1/Scheme2). Distinct from whitening_seed (SI whitening before MS5). None (default) leaves MS5's own default (0 on mountainsort5>=0.5.10). Setting an int requires mountainsort5>=0.5.10. n_jobs>1 / multi-threaded BLAS can void bit-identical reproducibility.",
         "delete_temporary_recording": "If True, the temporary recording file is deleted after sorting (this may fail on Windows requiring the end-user to delete the file themselves later)",
     }
 
@@ -120,6 +122,17 @@ class Mountainsort5Sorter(BaseSorter):
     def _run_from_folder(cls, sorter_output_folder, params, verbose):
         import mountainsort5 as ms5
 
+        ms5_version = parse(version("mountainsort5"))
+        random_seed = params["random_seed"]
+        if random_seed is not None and ms5_version < parse("0.5.10"):
+            raise ValueError(
+                f"Mountainsort5Sorter parameter 'random_seed' requires mountainsort5>=0.5.10 "
+                f"(installed version is {ms5_version}). Upgrade with: pip install -U 'mountainsort5>=0.5.10'"
+            )
+        scheme_random_seed_kwargs = {}
+        if random_seed is not None:
+            scheme_random_seed_kwargs["random_seed"] = random_seed
+
         recording = cls.load_recording_from_folder(sorter_output_folder.parent, with_warnings=False)
         if recording is None:
             raise Exception("Unable to load recording from folder.")
@@ -158,6 +171,7 @@ class Mountainsort5Sorter(BaseSorter):
             snippet_mask_radius=p["snippet_mask_radius"],
             npca_per_channel=p["npca_per_channel"],
             npca_per_subdivision=p["npca_per_subdivision"],
+            **scheme_random_seed_kwargs,
         )
 
         scheme2_sorting_parameters = ms5.Scheme2SortingParameters(
@@ -177,6 +191,7 @@ class Mountainsort5Sorter(BaseSorter):
             classifier_npca=None,
             training_duration_sec=p["scheme2_training_duration_sec"],
             training_recording_sampling_mode=p["scheme2_training_recording_sampling_mode"],
+            **scheme_random_seed_kwargs,
         )
 
         scheme3_sorting_parameters = ms5.Scheme3SortingParameters(
